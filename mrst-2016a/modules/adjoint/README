@@ -1,0 +1,2 @@
+Implements strategies for production optimisation based on adjoint formulations. This enables for, instance, optimization of net present value constrained by the bottom-hole pressure in wells.
+
