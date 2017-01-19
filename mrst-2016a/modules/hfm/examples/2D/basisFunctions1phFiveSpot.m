@@ -20,7 +20,8 @@ checkLineSegmentIntersect;      % ensure lineSegmentIntersect.m is on path
 % Construct a Cartesian grid comprising 90-by-90 cells, where each cell has
 % dimension 1-by-1 m^2. Define 6 fracture lines.
 
-celldim = [99 99];
+%celldim = [99 99];
+celldim = [18,18];
 physdim = [99 99];
 G = cartGrid(celldim, physdim);
 G = computeGeometry(G);
@@ -42,10 +43,10 @@ fl = [16.5, 0, 16.5, 99;
 dispif(mrstVerbose, 'Processing user input...\n\n');
 [G,fracture] = processFracture2D(G,fl);
 fracture.aperture = 1/25; % Fracture aperture
-figure;
-plotFractureLines(G, fracture);
-axis tight; 
-box on
+% figure(1);
+% plotFractureLines(G, fracture);
+% axis tight; 
+% box on
 
 %% Compute CI and construct fracture grid
 % For each matrix block containing a fracture, we compute a fracture-matrix
@@ -58,19 +59,21 @@ dispif(mrstVerbose, 'Computing CI and constructing fracture grid...\n\n');
 G = CIcalculator2D(G,fracture);
 min_size = 0.8; cell_size = 1; % minimum and average cell size.
 [G,F,fracture] = gridFracture2D(G,fracture,'min_size',min_size,'cell_size',cell_size);
-clf; plotFractureNodes2D(G,F,fracture); box on
+% figure(1);
+% plotFractureNodes2D(G,F,fracture); box on
 
 %% Set rock properties in fracture and matrix
 % Set the permeability (K) as 1 Darcy in the matrix and 10000 Darcy in the
 % fractures. Additionally, set the porosity of the matrix and fractures to
 % 50%.
-
+K_frac = [100;1000000];
+basis_sb = cell(size(K_frac, 1), 1);
+for i = 1:size(K_frac, 1)
 dispif(mrstVerbose, 'Initializing rock and fluid properties...\n\n');
 G.rock.perm = ones(G.cells.num,1)*darcy;
 G.rock.poro = 0.5*ones(G.cells.num, 1);
-K_frac = 10000; % Darcy
 poro_frac = 0.5;
-G = makeRockFrac(G, K_frac, 'permtype','homogeneous','porosity',poro_frac);
+G = makeRockFrac(G, K_frac(i), 'permtype','homogeneous','porosity',poro_frac);
 
 %% Define fluid properties
 % Define a single fluid of viscosity 1 cP and density 1000 kg/m3.
@@ -122,12 +125,12 @@ state.wellSol = initWellSol(W, 0);
 
 dispif(mrstVerbose, 'Defining coarse grids and interaction regions...\n\n');
 
-coarseDims = [9 9]; 
-dof_frac = 12; % Number of coarse blocks in the fracture grid
+coarseDims = [6 6]; 
+dof_frac = 12; %36; % Number of coarse blocks in the fracture grid
 [CG, CGf] = getRsbGridsHFM(G, fracture.network, 'coarseDims', coarseDims,...
             'dof_frac',dof_frac);
 
-clf; plotFractureCoarseGrid2D(G,CG.partition,F)
+%figure(1+(i-1)*3); plotFractureCoarseGrid2D(G,CG.partition,F);
 
 %% Incompressible fine-scale solver
 % The fine scale pressure solution is computed using the boundary
@@ -145,55 +148,110 @@ state_fs = incompTPFA(state, G, T, fluid,  ...
 % computing the multiscale pressure in the next section.
 
 dispif(mrstVerbose, 'Computing basis functions...\n\n');
-basis_sb = getMultiscaleBasis(CG, A, 'type', 'rsb');
-clf; plotToolbar(G,basis_sb.B,'filterzero',true);
-plotGrid(CG,'FaceColor','none');
-axis tight; colorbar; 
-title('Basis Functions in the matrix');
+basis_sb{i} = getMultiscaleBasis(CG, A, 'type', 'rsb');
 
 %% Compute multiscale solution
 
-dispif(mrstVerbose, 'Computing multiscale solution...\n\n');
-[state_ms,~] = incompMultiscale(state, CG, T, fluid, basis_sb,...
-               'Wells', W,'use_trans',true);
+% dispif(mrstVerbose, 'Computing multiscale solution...\n\n');
+% [state_ms,~] = incompMultiscale(state, CG, T, fluid, basis_sb{i},...
+%                'Wells', W,'use_trans',true);
 
 %% Solve using MS-ILU and MS-GMRES
 % Compute an iterative multiscale solution using ILU and GMRES
 % preconditioners.
 
-fn = getSmootherFunction('type', 'ilu');
-
-[~,report] = incompMultiscale(state, CG, T, fluid, basis_sb,...
-     'Wells', W, 'use_trans',true, 'tolerance', 1e-8, 'iterations', 100,...
-    'useGMRES', false, 'reconstruct', true, 'getSmoother', fn);
-
-[~,report2] = incompMultiscale(state, CG, T, fluid, basis_sb,...
-     'Wells', W, 'use_trans',true, 'tolerance', 1e-8, 'iterations', 100,...
-    'useGMRES', true, 'reconstruct', true, 'getSmoother', fn);
+% fn = getSmootherFunction('type', 'ilu');
+% 
+% [~,report] = incompMultiscale(state, CG, T, fluid, basis_sb{i},...
+%      'Wells', W, 'use_trans',true, 'tolerance', 1e-8, 'iterations', 100,...
+%     'useGMRES', false, 'reconstruct', true, 'getSmoother', fn);
+% 
+% [~,report2] = incompMultiscale(state, CG, T, fluid, basis_sb{i},...
+%      'Wells', W, 'use_trans',true, 'tolerance', 1e-8, 'iterations', 100,...
+%     'useGMRES', true, 'reconstruct', true, 'getSmoother', fn);
 
 %% Plot results and convergence
-figure; colormap jet(25)
-plotCellData(G, state_fs.pressure,'EdgeColor','none')
-line(fl(:,1:2:3)',fl(:,2:2:4)','Color','r','LineWidth',0.5);
-view(90, 90); colorbar, cx=caxis();
-axis tight off
-title('Fine scale')
+% figure(2+(i-1)*3); colormap jet(25)
+% plotCellData(G, state_fs.pressure,'EdgeColor','none')
+% line(fl(:,1:2:3)',fl(:,2:2:4)','Color','r','LineWidth',0.5);
+% view(90, 90); colorbar, cx=caxis();
+% axis tight off
+% title(['Fine scale, K_f = ' num2str(K_frac(i))])
+% 
+% figure(3+(i-1)*3); colormap jet(25)
+% plotCellData(G, state_ms.pressure,'EdgeColor','none')
+% line(fl(:,1:2:3)',fl(:,2:2:4)','Color','r','LineWidth',0.5);
+% view(90, 90); colorbar, caxis(cx);
+% axis tight off
+% title(['F-MsRSB, K_f = ' num2str(K_frac(i))])
 
-figure; colormap jet(25)
-plotCellData(G, state_ms.pressure,'EdgeColor','none')
-line(fl(:,1:2:3)',fl(:,2:2:4)','Color','r','LineWidth',0.5);
-view(90, 90); colorbar, caxis(cx);
-axis tight off
-title('F-MsRSB')
+end
 
-figure; colormap jet
-L1 = abs(state_ms.pressure-state_fs.pressure)./state_fs.pressure;
-plotCellData(G, L1,'EdgeColor','none')
+figure(size(K_frac, 1)*3+1);
+plotToolbar(G,basis_sb{1}.B,'filterzero',true);
+plotGrid(CG,'FaceColor','none');
 line(fl(:,1:2:3)',fl(:,2:2:4)','Color','r','LineWidth',0.5);
-view(90, 90); colorbar
-axis tight off
-L1_eq = '$$ \frac{| P_i^{fs}-P_i^{f-msrsb} | }{ P_i^{fs}} $$';
-title(L1_eq,'interpreter','latex');
+axis tight; colorbar; 
+title(['Basis Functions for fracture permeability: ' num2str(K_frac(1))]);
+
+figure(size(K_frac, 1)*3+2);
+plotToolbar(G,basis_sb{2}.B,'filterzero',true);
+plotGrid(CG,'FaceColor','none');
+line(fl(:,1:2:3)',fl(:,2:2:4)','Color','r','LineWidth',0.5);
+axis tight; colorbar; 
+title(['Basis Functions for fracture permeability: ' num2str(K_frac(2))])
+
+%% Plot basis functions
+Tri = delaunay(G.cells.centroids(1:G.Matrix.cells.num,1), G.cells.centroids(1:G.Matrix.cells.num,2));
+ccb = 22; % index of coarse cell to compare basis function
+ifcells = CG.cells.interaction{ccb};% fine cells in interaction region of coarse cell ccb
+% plot basis functions in matrix cells for both fracture permeabilities and
+% absolute deviation 
+figure(size(K_frac, 1)*3+3);
+pl1 = subplot(1,3,1);
+%[xq,yq] = meshgrid(G.Matrix.cells.centroids(:,1), G.Matrix.cells.centroids(:,2));
+%vq = griddata(G.Matrix.cells.centroids(:,1), G.Matrix.cells.centroids(:,2),full(basis_sb{1}.B(1:G.Matrix.cells.num,ccb)),xq,yq);
+%surf(xq,yq,vq);
+trimesh(Tri, G.cells.centroids(1:G.Matrix.cells.num,1), G.cells.centroids(1:G.Matrix.cells.num,2), full(basis_sb{1}.B(1:G.Matrix.cells.num,ccb)));
+outlineCoarseCell(G, CG.partition, ccb, 'b');
+title(['K_f = ' num2str(K_frac(1))])
+colormap(pl1,spring)
+pl2 = subplot(1,3,2);
+trimesh(Tri, G.cells.centroids(1:G.Matrix.cells.num,1), G.cells.centroids(1:G.Matrix.cells.num,2), full(basis_sb{2}.B(1:G.Matrix.cells.num,ccb)));
+colormap(pl2,winter)
+title(['K_f = ' num2str(K_frac(2))])
+axis([pl1, pl2],[min(G.cells.centroids(ifcells,1)) max(G.cells.centroids(ifcells,1)) min(G.cells.centroids(ifcells,2)) max(G.cells.centroids(ifcells,2)) 0 1]); 
+pl3 = subplot(1,3,3);
+trimesh(Tri, G.cells.centroids(1:G.Matrix.cells.num,1), G.cells.centroids(1:G.Matrix.cells.num,2), full(basis_sb{1}.B(1:G.Matrix.cells.num,ccb))-full(basis_sb{2}.B(1:G.Matrix.cells.num,ccb)));
+axis([min(G.cells.centroids(ifcells,1)) max(G.cells.centroids(ifcells,1)) min(G.cells.centroids(ifcells,2)) max(G.cells.centroids(ifcells,2)) -1 1]); 
+
+% % plot basis functions in fracture cells for both fracture permeabilities and
+% % absolute deviation 
+% fstart = G.Matrix.cells.num+1; %first fracture cell in assembled grid
+% Tri = delaunay(G.cells.centroids(fstart:end,1), G.cells.centroids(fstart:end,2));
+% figure(size(K_frac, 1)*3+4);
+% pl1 = subplot(1,3,1);
+% %trimesh(Tri, G.cells.centroids(fstart:end,1), G.cells.centroids(fstart:end,2), full(basis_sb{1}.B(fstart:end,ccb)));
+% plot3(G.cells.centroids(fstart:end,1), G.cells.centroids(fstart:end,2), full(basis_sb{1}.B(fstart:end,ccb)));
+% title(['K_f = ' num2str(K_frac(1))])
+% colormap(pl1,spring)
+% pl2 = subplot(1,3,2);
+% %trimesh(Tri, G.cells.centroids(fstart:end,1), G.cells.centroids(fstart:end,2), full(basis_sb{2}.B(fstart:end,ccb)));
+% plot3(G.cells.centroids(fstart:end,1), G.cells.centroids(fstart:end,2), full(basis_sb{2}.B(fstart:end,ccb)));
+% colormap(pl2,winter)
+% title(['K_f = ' num2str(K_frac(2))])
+% axis([pl1, pl2],[min(G.cells.centroids(ifcells,1)) max(G.cells.centroids(ifcells,1)) min(G.cells.centroids(ifcells,2)) max(G.cells.centroids(ifcells,2)) 0 1]); 
+% pl3 = subplot(1,3,3);
+% %trimesh(Tri, G.cells.centroids(fstart:end,1), G.cells.centroids(fstart:end,2), full(basis_sb{1}.B(fstart:end,ccb))-full(basis_sb{2}.B(fstart:end,ccb)));
+% plot3(G.cells.centroids(fstart:end,1), G.cells.centroids(fstart:end,2), full(basis_sb{1}.B(fstart:end,ccb))-full(basis_sb{2}.B(fstart:end,ccb)));
+%axis([min(G.cells.centroids(ifcells,1)) max(G.cells.centroids(ifcells,1)) min(G.cells.centroids(ifcells,2)) max(G.cells.centroids(ifcells,2)) -1 1]); 
+
+
+%% calculate deviation of basis functions in L2 
+deviation = abs(full(basis_sb{1}.B(ifcells,ccb))-full(basis_sb{2}.B(ifcells,ccb)));
+l2deviation = sqrt(sum(deviation.*deviation.*G.cells.volumes(ifcells),1)/sum(G.cells.volumes(ifcells),1));
+l1deviation = sum(deviation.*G.cells.volumes(ifcells),1)/sum(G.cells.volumes(ifcells),1);
+
 
 %%% Plot convergence
 % figure;

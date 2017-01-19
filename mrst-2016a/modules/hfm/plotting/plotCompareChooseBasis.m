@@ -1,4 +1,4 @@
-function plotCompareChooseBasis(basis, G, CG, Kfrac)
+function plotCompareChooseBasis(basis, G, CG, paramval, paramstr)
 % plotCompareChooseBasis(basis, G, CG, Kfrac) plots the basis functions 
 % contained in basis for different permeability values Kfrac
 %
@@ -23,7 +23,7 @@ y = G.cells.centroids(1:no_m,2);
 tri = delaunay(x,y);
 hcb = zeros(no_b, 1); % checkbox handles
 h = zeros(no_b, 1); % plot handles
-figure(1); hold on;
+figure; hold on;
 % plot basis for coarse cell 1
 for i=1:size(basis,1)
         z = full(basis{i}.B(1:no_m,ccb));
@@ -31,11 +31,19 @@ for i=1:size(basis,1)
 end
 axis([min(G.cells.centroids(ifcells,1)) max(G.cells.centroids(ifcells,1)) min(G.cells.centroids(ifcells,2)) max(G.cells.centroids(ifcells,2)) 0 1])
 view(-20, 20);
-colors = rand(no_b,3);
+set(gcf,'Position',[200 200 660 450]);
+set(gca,'OuterPosition',[0.1 0 0.9 1]);
+colors =          [0,        0.4470,  0.7410;
+                  0.8500,    0.3250,   0.0980;
+                  0.9290,    0.6940,   0.1250;
+                  0.4940,    0.1840,   0.5560;
+                  0.4660,    0.6740,   0.1880;
+                  0.3010,    0.7450,   0.9330;
+                  0.6350,    0.0780,   0.1840];
 % set checkboxes to enable viewing of single basis functions
 for i = 1:no_b
    hcb(i) = uicontrol('Style','checkbox','Value',1,...
-                       'Position',[10 8+i*30 100 30],'String', ['K_f =' num2str(Kfrac(i))]);
+                       'Position',[10 8+i*30 100 30],'String', [paramstr '=' num2str(paramval(i))]);
    set(h(i), 'EdgeColor', 'k');
    set(h(i), 'FaceAlpha', 0.5); 
    set(h(i), 'FaceColor', colors(i,:))
