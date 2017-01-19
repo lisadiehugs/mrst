@@ -1,0 +1,175 @@
+
+<!DOCTYPE html
+  PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+   <!--
+This HTML was auto-generated from MATLAB code.
+To make changes, update the MATLAB code and republish this document.
+      --><title>gravityColumn</title><meta name="generator" content="MATLAB 9.1"><link rel="schema.DC" href="http://purl.org/dc/elements/1.1/"><meta name="DC.date" content="2016-12-21"><meta name="DC.source" content="gravityColumn.m"><style type="text/css">
+html,body,div,span,applet,object,iframe,h1,h2,h3,h4,h5,h6,p,blockquote,pre,a,abbr,acronym,address,big,cite,code,del,dfn,em,font,img,ins,kbd,q,s,samp,small,strike,strong,sub,sup,tt,var,b,u,i,center,dl,dt,dd,ol,ul,li,fieldset,form,label,legend,table,caption,tbody,tfoot,thead,tr,th,td{margin:0;padding:0;border:0;outline:0;font-size:100%;vertical-align:baseline;background:transparent}body{line-height:1}ol,ul{list-style:none}blockquote,q{quotes:none}blockquote:before,blockquote:after,q:before,q:after{content:'';content:none}:focus{outine:0}ins{text-decoration:none}del{text-decoration:line-through}table{border-collapse:collapse;border-spacing:0}
+
+html { min-height:100%; margin-bottom:1px; }
+html body { height:100%; margin:0px; font-family:Arial, Helvetica, sans-serif; font-size:10px; color:#000; line-height:140%; background:#fff none; overflow-y:scroll; }
+html body td { vertical-align:top; text-align:left; }
+
+h1 { padding:0px; margin:0px 0px 25px; font-family:Arial, Helvetica, sans-serif; font-size:1.5em; color:#d55000; line-height:100%; font-weight:normal; }
+h2 { padding:0px; margin:0px 0px 8px; font-family:Arial, Helvetica, sans-serif; font-size:1.2em; color:#000; font-weight:bold; line-height:140%; border-bottom:1px solid #d6d4d4; display:block; }
+h3 { padding:0px; margin:0px 0px 5px; font-family:Arial, Helvetica, sans-serif; font-size:1.1em; color:#000; font-weight:bold; line-height:140%; }
+
+a { color:#005fce; text-decoration:none; }
+a:hover { color:#005fce; text-decoration:underline; }
+a:visited { color:#004aa0; text-decoration:none; }
+
+p { padding:0px; margin:0px 0px 20px; }
+img { padding:0px; margin:0px 0px 20px; border:none; }
+p img, pre img, tt img, li img, h1 img, h2 img { margin-bottom:0px; } 
+
+ul { padding:0px; margin:0px 0px 20px 23px; list-style:square; }
+ul li { padding:0px; margin:0px 0px 7px 0px; }
+ul li ul { padding:5px 0px 0px; margin:0px 0px 7px 23px; }
+ul li ol li { list-style:decimal; }
+ol { padding:0px; margin:0px 0px 20px 0px; list-style:decimal; }
+ol li { padding:0px; margin:0px 0px 7px 23px; list-style-type:decimal; }
+ol li ol { padding:5px 0px 0px; margin:0px 0px 7px 0px; }
+ol li ol li { list-style-type:lower-alpha; }
+ol li ul { padding-top:7px; }
+ol li ul li { list-style:square; }
+
+.content { font-size:1.2em; line-height:140%; padding: 20px; }
+
+pre, code { font-size:12px; }
+tt { font-size: 1.2em; }
+pre { margin:0px 0px 20px; }
+pre.codeinput { padding:10px; border:1px solid #d3d3d3; background:#f7f7f7; }
+pre.codeoutput { padding:10px 11px; margin:0px 0px 20px; color:#4c4c4c; }
+pre.error { color:red; }
+
+@media print { pre.codeinput, pre.codeoutput { word-wrap:break-word; width:100%; } }
+
+span.keyword { color:#0000FF }
+span.comment { color:#228B22 }
+span.string { color:#A020F0 }
+span.untermstring { color:#B20000 }
+span.syscmd { color:#B28C00 }
+
+.footer { width:auto; padding:10px 0px; margin:25px 0px 0px; border-top:1px dotted #878787; font-size:0.8em; line-height:140%; font-style:italic; color:#878787; text-align:left; float:none; }
+.footer p { margin:0px; }
+.footer a { color:#878787; }
+.footer a:hover { color:#878787; text-decoration:underline; }
+.footer a:visited { color:#878787; }
+
+table th { padding:7px 5px; text-align:left; vertical-align:middle; border: 1px solid #d6d4d4; font-weight:bold; }
+table td { padding:7px 5px; text-align:left; vertical-align:top; border:1px solid #d6d4d4; }
+
+
+
+
+
+  </style></head><body><div class="content"><h2>Contents</h2><div><ul><li><a href="#1">Gravity Column</a></li><li><a href="#2">Define the model</a></li><li><a href="#3">Assemble and solve the linear system</a></li><li><a href="#4">Plot the face pressures</a></li></ul></div><h2 id="1">Gravity Column</h2><p>In this example, we introduce a simple pressure solver and use it to solve the single-phase pressure equation</p><p><img src="gravityColumn_eq02022832011900023991.png" alt="$$\nabla\cdot v = q, \qquad&#xA;   v=\textbf{--}\frac{K}{\mu} \bigl[\nabla p+\rho g\nabla z\bigr],$$"></p><p>within the domain [0,1]x[0,1]x[0,30] using a Cartesian grid with homogeneous isotropic permeability of 100 mD. The fluid has density 1000 kg/m^3 and viscosity 1 cP and the pressure is 100 bar at the top of the structure.</p><p>The purpose of the example is to show the basic steps for setting up, solving, and visualizing a flow problem. More details on the grid structure, the structure used to hold the solutions, and so on, are given in the <a href="simpleBC.html">basic flow-solver tutorial</a>.</p><pre class="codeinput">addpath(<span class="string">'src'</span>);
+mrstModule <span class="string">add</span> <span class="string">incomp</span>
+</pre><pre class="codeoutput">No module mapping found for
+  * incomp
+</pre><h2 id="2">Define the model</h2><p>To set up a model, we need: a grid, rock properties (permeability), a fluid object with density and viscosity, and boundary conditions.</p><pre class="codeinput">gravity <span class="string">reset</span> <span class="string">on</span>
+G          = cartGrid([1, 1, 30], [1, 1, 30]);
+G          = computeGeometry(G);
+rock.perm  = repmat(0.1*darcy(), [G.cells.num, 1]);
+fluid      = initSingleFluid(<span class="string">'mu'</span> ,    1*centi*poise, <span class="keyword">...</span>
+                             <span class="string">'rho'</span>, 1014*kilogram/meter^3);
+bc  = pside([], G, <span class="string">'TOP'</span>, 100.*barsa());
+</pre><h2 id="3">Assemble and solve the linear system</h2><p>To solve the flow problem, we use the standard two-point flux-approximation method (TPFA), which for a Cartesian grid is the same as a classical seven-point finite-difference scheme for Poisson's equation. This is done in two steps: first we compute the transmissibilities and then we assemble and solve the corresponding discrete system.</p><pre class="codeinput">T   = simpleComputeTrans(G, rock);
+sol = simpleIncompTPFA(initResSol(G, 0.0), G, T, fluid, <span class="string">'bc'</span>, bc);
+</pre><h2 id="4">Plot the face pressures</h2><pre class="codeinput">newplot;
+plotFaces(G, 1:G.faces.num, convertTo(sol.facePressure, barsa()));
+set(gca, <span class="string">'ZDir'</span>, <span class="string">'reverse'</span>), title(<span class="string">'Pressure [bar]'</span>)
+view(3), colorbar
+set(gca,<span class="string">'DataAspect'</span>,[1 1 10]);
+
+<span class="comment">%{
+</span><span class="comment">Copyright 2009-2016 SINTEF ICT, Applied Mathematics.
+</span><span class="comment">
+</span><span class="comment">This file is part of The MATLAB Reservoir Simulation Toolbox (MRST).
+</span><span class="comment">
+</span><span class="comment">MRST is free software: you can redistribute it and/or modify
+</span><span class="comment">it under the terms of the GNU General Public License as published by
+</span><span class="comment">the Free Software Foundation, either version 3 of the License, or
+</span><span class="comment">(at your option) any later version.
+</span><span class="comment">
+</span><span class="comment">MRST is distributed in the hope that it will be useful,
+</span><span class="comment">but WITHOUT ANY WARRANTY; without even the implied warranty of
+</span><span class="comment">MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+</span><span class="comment">GNU General Public License for more details.
+</span><span class="comment">
+</span><span class="comment">You should have received a copy of the GNU General Public License
+</span><span class="comment">along with MRST.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+</span><span class="comment">%}</span>
+</pre><img vspace="5" hspace="5" src="gravityColumn_01.png" alt=""> <p class="footer"><br><a href="http://www.mathworks.com/products/matlab/">Published with MATLAB&reg; R2016b</a><br></p></div><!--
+##### SOURCE BEGIN #####
+%% Gravity Column
+% In this example, we introduce a simple pressure solver and use it to
+% solve the single-phase pressure equation
+%
+% $$\nabla\cdot v = q, \qquad
+%    v=\textbf{REPLACE_WITH_DASH_DASH}\frac{K}{\mu} \bigl[\nabla p+\rho g\nabla z\bigr],$$
+%
+% within the domain [0,1]x[0,1]x[0,30] using a Cartesian grid with
+% homogeneous isotropic permeability of 100 mD. The fluid has density 1000
+% kg/m^3 and viscosity 1 cP and the pressure is 100 bar at the top of the
+% structure.
+%
+% The purpose of the example is to show the basic steps for setting up,
+% solving, and visualizing a flow problem. More details on the grid
+% structure, the structure used to hold the solutions, and so on, are given
+% in the <simpleBC.html basic flow-solver tutorial>.
+addpath('src');
+mrstModule add incomp
+
+%% Define the model
+% To set up a model, we need: a grid, rock properties (permeability), a
+% fluid object with density and viscosity, and boundary conditions.
+gravity reset on
+G          = cartGrid([1, 1, 30], [1, 1, 30]);
+G          = computeGeometry(G);
+rock.perm  = repmat(0.1*darcy(), [G.cells.num, 1]);
+fluid      = initSingleFluid('mu' ,    1*centi*poise, ...
+                             'rho', 1014*kilogram/meter^3);
+bc  = pside([], G, 'TOP', 100.*barsa());
+
+%% Assemble and solve the linear system
+% To solve the flow problem, we use the standard two-point
+% flux-approximation method (TPFA), which for a Cartesian grid is the same
+% as a classical seven-point finite-difference scheme for Poisson's
+% equation. This is done in two steps: first we compute the
+% transmissibilities and then we assemble and solve the corresponding
+% discrete system.
+T   = simpleComputeTrans(G, rock);
+sol = simpleIncompTPFA(initResSol(G, 0.0), G, T, fluid, 'bc', bc);
+
+%% Plot the face pressures
+newplot;
+plotFaces(G, 1:G.faces.num, convertTo(sol.facePressure, barsa()));
+set(gca, 'ZDir', 'reverse'), title('Pressure [bar]')
+view(3), colorbar
+set(gca,'DataAspect',[1 1 10]);
+
+%{
+Copyright 2009-2016 SINTEF ICT, Applied Mathematics.
+
+This file is part of The MATLAB Reservoir Simulation Toolbox (MRST).
+
+MRST is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+MRST is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with MRST.  If not, see <http://www.gnu.org/licenses/>.
+%}
+
+##### SOURCE END #####
+--></body></html>
