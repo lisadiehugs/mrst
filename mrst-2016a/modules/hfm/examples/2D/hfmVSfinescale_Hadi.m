@@ -10,18 +10,14 @@ checkLineSegmentIntersect;      % ensure lineSegmentIntersect.m is on path
 % to be homogeneous, isotropic and equal 1 Darcy in the matrix and 10e4 Darcy 
 % in the fractures. The porosity is 0.2 in the fractures and 0.5 in the matrix. 
 % Compute one-sided (half) transmissibilities from input grid and rock properties.
-celldim = [297 297];
-celldim_hfm = [148 148];
-physdim = [99 99];
+celldim = [225 225];
+physdim = [9 9];
+celldim_hfm = [27 27];
 G = cartGrid(celldim, physdim);
 G = computeGeometry(G);
 % define fracture lines 
-fl = [16.5, 0, 16.5, 99;
-          49.5, 0, 49.5, 99;
-          82.5, 0, 82.5, 99;
-          0, 16.5, 99, 16.5;
-          0, 49.5, 99, 49.5;
-          0, 82.5, 99, 82.5];
+fl = [4.5, 2 , 4.5, 7;
+          2, 4.5, 7, 4.5];
 hfmG = cartGrid(celldim_hfm, physdim);
 hfmG = computeGeometry(hfmG);
 
@@ -32,12 +28,13 @@ fracture.aperture = physdim(1)/celldim(1); % Fracture aperture
 %% Compute CI and construct fracture grid
 dispif(mrstVerbose, 'Computing CI and constructing fracture grid...\n\n');
 hfmG = CIcalculator2D(hfmG,fracture);
-min_size = 0.7; cell_size = 0.8; % minimum and average cell size.
+min_size = 0.3; cell_size = 0.32; % minimum and average cell size.
 [hfmG,F,fracture] = gridFracture2D(hfmG,fracture,'min_size',min_size,'cell_size',cell_size);
+figure; 
 plotFractureNodes2D(hfmG,F,fracture);
 
 %% Set rock properties
-K_frac = 100; K_matrix = 1; % * Darcy
+K_frac = 10000; K_matrix = 1; % * Darcy
 p_frac = 0.2; p_matrix = 0.5;
 % hfm
 hfmG.rock.poro = p_matrix*ones(hfmG.cells.num, 1);
@@ -47,12 +44,8 @@ hfmG = makeRockFrac(hfmG, K_frac, 'permtype','homogeneous','porosity',p_frac);
 rock.perm  = ones(G.cells.num,1)*K_matrix *darcy;
 rock.poro  = ones(G.cells.num, 1)*p_matrix;
 eps = 1e-3;
-fraccells = (G.cells.centroids(:,2)>(16.5-eps) & G.cells.centroids(:,2)<(16.5+eps) | ...
-            G.cells.centroids(:,1)>(16.5-eps) & G.cells.centroids(:,1)<(16.5+eps) | ...
-            G.cells.centroids(:,2)>(49.5-eps) & G.cells.centroids(:,2)<(49.5+eps) | ...
-            G.cells.centroids(:,1)>(49.5-eps) & G.cells.centroids(:,1)<(49.5+eps) | ...
-            G.cells.centroids(:,2)>(82.5-eps) & G.cells.centroids(:,2)<(82.5+eps) | ...
-            G.cells.centroids(:,1)>(82.5-eps) & G.cells.centroids(:,1)<(82.5+eps));
+fraccells = (G.cells.centroids(:,2)>(4.5-eps) & G.cells.centroids(:,2)<(4.5+eps) & G.cells.centroids(:,1)>2 & G.cells.centroids(:,1)<7 | ...
+            G.cells.centroids(:,1)>(4.5-eps) & G.cells.centroids(:,1)<(4.5+eps) & G.cells.centroids(:,2)>2 & G.cells.centroids(:,2)<7);
 rock.perm(fraccells) = K_frac * darcy;
 rock.poro(fraccells) = p_frac;
 rock.ntg   = ones(G.cells.num, 1);
@@ -74,37 +67,57 @@ plotCellData(G, rock.perm);
             'rho', [1000, 700] .* kilogram/meter^3, ...
             'n'  , [   2,   2]);
 
-%% Introduce wells
-% We will include two wells, one rate-controlled vertical well and one
-% horizontal well controlled by bottom-hole pressure. Wells are described
-% using a Peacemann model, giving an extra set of equations that need to be
-% assembled, see the <matlab:edit('incompTutorialWells.m') tutorial on well
-% models> for more details.
-W = addWell([], G, rock, 1,'InnerProduct', 'ip_tpf','Type', ...
-    'bhp', 'Val', 120*barsa,'Radius', .06, 'Comp_i', [1, 0]);
-    W = addWell(W, G, rock, prod(celldim), 'InnerProduct', 'ip_tpf', 'Type', ...
-    'bhp' , 'Val', 100*barsa, 'Radius', .06, 'Comp_i', [0, 1]);
+%% Add BC
 
-hfmW = addWell([], hfmG.Matrix, hfmG.Matrix.rock, 1,'InnerProduct', 'ip_tpf','Type', ...
-    'bhp', 'Val', 120*barsa,'Radius', .06, 'Comp_i', [1, 0]);
-    hfmW = addWell(hfmW, hfmG.Matrix, hfmG.Matrix.rock, hfmG.cartDims(1)*hfmG.cartDims(2), 'InnerProduct', 'ip_tpf', 'Type', ...
-    'bhp' , 'Val', 100*barsa, 'Radius', .06, 'Comp_i', [0, 1]);
+bc = [];
+xf = G.faces.centroids(:, 1);
+left = find(abs(xf - min(xf)) < 1e-4);
+right = find(abs(xf - max(xf)) < 1e-4);
+
+bc = addBC(bc, left, 'pressure', 1*barsa, 'sat', [1 0]);
+bc = addBC(bc, right, 'pressure', 0*barsa, 'sat', [0 1]);
+
+bc_hfm = [];
+xf = hfmG.faces.centroids(:, 1);
+left = find(abs(xf - min(xf)) < 1e-4);
+right = find(abs(xf - max(xf)) < 1e-4);
+
+bc_hfm = addBC(bc_hfm, left, 'pressure', 1*barsa, 'sat', [1 0]);
+bc_hfm = addBC(bc_hfm, right, 'pressure', 0*barsa, 'sat', [0 1]);
 
 %% Initialize state variables
 % Once the wells are added, we can generate the components of the linear
 % system corresponding to the two wells and initialize the solution
 % structure (with correct bhp)
 % fine-scale
-state  = initResSol (G, 0);
-state.wellSol = initWellSol(W, 0);
+state  = initResSol (G, 0*barsa, [0 1]);
 %hfm
-hfm_state  = initResSol (hfmG, 0);
-hfm_state.wellSol = initWellSol(hfmW, 0);
+hfm_state  = initResSol (hfmG, 0*barsa, [0 1]);
 
-%% solve initital pressure
+%% Solve initial pressure in reservoir
+% Solve linear system construced from S and W to obtain solution for flow
+% and pressure in the reservoir and the wells.
 gravity off
-state = incompTPFA(state, G, hT, fluid, 'wells', W);
-hfm_state = incompTPFA(hfm_state, hfmG, T, fluid, 'wells', hfmW, 'use_trans',true);
+state = incompTPFA(state, G, hT, fluid, 'bc', bc);
+hfm_state = incompTPFA(hfm_state, hfmG, T, fluid,  'bc', bc_hfm, 'use_trans',true);
+
+%% Plot initial pressure
+
+figure;
+plotToolbar(G, state.pressure)
+line(fl(:,1:2:3)',fl(:,2:2:4)',1e-3*ones(2,size(fl,1)),'Color','r','LineWidth',0.5);
+cx=caxis();
+colormap jet(25)
+axis tight off
+title('Initial Pressure: Fine scale')
+
+figure;
+plotToolbar(hfmG, hfm_state.pressure)
+line(fl(:,1:2:3)',fl(:,2:2:4)',1e-3*ones(2,size(fl,1)),'Color','r','LineWidth',0.5);
+caxis(cx);
+view(90, 90)
+axis tight off
+title('Initial Pressure: HFM')
 %% Transport loop
 % We solve the two-phase system using a sequential splitting in which the
 % pressure and fluxes are computed by solving the flow equation and then
@@ -116,11 +129,13 @@ hfm_state = incompTPFA(hfm_state, hfmG, T, fluid, 'wells', hfmW, 'use_trans',tru
 % threshold (this is not done herein).
 pv     = poreVolume(G,rock);
 hfm_pv = poreVolume(hfmG,hfmG.rock);
-nt     = 48;
-Time   = 0.5*(sum(pv)/state.wellSol(1).flux);
+nt     = 30;
+t200   = 0.1*(sum(pv)/sum(state.flux(left)));
+Time   = t200;
 dT     = Time/nt;
 dTplot = Time/3;
 N      = fix(Time/dTplot);
+plotNo = 1;
 
 %%
 % The transport equation will be solved by the single-point upstream method
@@ -133,101 +148,56 @@ N      = fix(Time/dTplot);
 pvi = zeros(nt,1); hfm_pvi = zeros(nt,1);
 pfs = zeros(nt,1); phfms = zeros(nt,1); 
 volflux = zeros(nt,1); hfm_volflux = zeros(nt,1);
-sol_fs = cell(nt,1);
-sol_hfm = cell(nt,1);
-
-% % fine-scale loop
-% t  = 0;
-% hwb = waitbar(0,'Time loop');
-% count = 1;
-% solve initial pressure
-% tic;
-% while count <= nt,
-%    state = implicitTransport(state, G, dT, rock, fluid, 'wells', W);
-% 
-%    % Check for inconsistent saturations
-%    s = hfm_state.s(:,1);
-%    assert(max(s) < 1+eps && min(s) > -eps);
-% 
-%    % Update solution of pressure equation.
-%    state  = incompTPFA(state , G, hT, fluid, 'wells', W);
-%    
-%    sol_fs{count,1} = state;
-%    
-%    %increase time
-%    t = t + dT;
-%    waitbar(t/Time,hwb);
-%    % pore volume injected
-%    volflux(count) = state.wellSol(1).flux*dT;
-%    pvi(count) = 100*(sum(volflux(1:count)))/sum(pv);
-%    pfs(count,1) = state.s(W(2).cells,1); 
-%    count = count + 1;
-% end
-% toc
-% close(hwb);
-
-% hfm loop
 t  = 0;
 hwb = waitbar(0,'Time loop');
 count = 1;
-% solve initial pressure
-tic;
+sol_fs = cell(nt,1);
+sol_hfm = cell(nt,1);
+figure;
 while count <= nt,
-   hfm_state = implicitTransport(hfm_state, hfmG, dT, hfmG.rock, fluid, 'wells', hfmW, 'Trans', T);
+   state = implicitTransport(state, G, dT, rock, fluid,  'bc',bc);
+   hfm_state = implicitTransport(hfm_state, hfmG, dT, hfmG.rock, fluid,  'bc', bc_hfm, 'Trans', T);
 
    % Check for inconsistent saturations
-   s = hfm_state.s(:,1);
+   s = [state.s(:,1); hfm_state.s(:,1)];
    assert(max(s) < 1+eps && min(s) > -eps);
 
    % Update solution of pressure equation.
-   hfm_state  = incompTPFA(hfm_state, hfmG, T, fluid, 'wells', hfmW, 'use_trans',true);
+   state  = incompTPFA(state , G, hT, fluid,  'bc',bc);
+   hfm_state  = incompTPFA(hfm_state, hfmG, T, fluid, 'bc', bc_hfm, 'use_trans',true);
    
+   sol_fs{count,1} = state;
    sol_hfm{count,1} = hfm_state;
    
    %increase time
    t = t + dT;
    waitbar(t/Time,hwb);
-   % pore volume injected
-   hfm_volflux(count) = hfm_state.wellSol(1).flux*dT;
-   hfm_pvi(count) = 100*(sum(hfm_volflux(1:count)))/sum(pv);
-   phfms(count,1) = hfm_state.s(hfmW(2).cells,1); 
+   if ( t < plotNo*dTplot && t < Time), continue, end
+    
+    % Plot saturation
+    heading = 'Saturation';
+    
+    r = 0.01;
+    subplot('position',[(plotNo-1)/N+r, 0.50, 1/N-2*r, 0.44]), cla
+    plotCellData(G, state.s(:,1), 'edgealpha', 0.1);
+    colormap(flipud(jet))
+    view(0,90), axis equal off, title(['fine-scale t = ' num2str(round(t/day, 1)) ' days'] ,'FontSize',8)
+    
+    subplot('position',[(plotNo-1)/N+r, 0.02, 1/N-2*r, 0.44]), cla
+    plotCellData(hfmG, hfm_state.s(:,1), 'edgealpha', 0.1);
+    colormap(flipud(jet))
+    view(0,90), axis equal off, title(['HFM t = ' num2str(round(t/day, 1)) ' days'],'FontSize',8)
+    
+    plotNo = plotNo+1;
+    drawnow
+   
    count = count + 1;
 end
-toc
 close(hwb);
-%% Plot saturations
-plotNo = 1;
-figure; hold on; colormap(flipud(winter))
-boundary = any(G.faces.neighbors==0,2);
-hfmboundary = any(hfmG.faces.neighbors==0,2);
-facelist = 1:G.faces.num;
-hfmfacelist = 1:hfmG.faces.num;
-bfaces = facelist(boundary);
-hfmbfaces = hfmfacelist(hfmboundary);
-for i = nt/3:nt/3:nt
-    state_fs = sol_fs{i,1}; state_hfm = sol_hfm{i,1};
-    heading = [num2str(round(pvi(i))),  ' % PVI'];
-    % Plot saturation
-    r = 0.01;
-    subplot('position',[(plotNo-1)/N+r, 0.50, 1/N-2*r, 0.48]), cla
-    plotCellData(G,state_fs.s(:,1),'EdgeColor','none');
-    line(fl(:,1:2:3)',fl(:,2:2:4)','Color','r','LineWidth',0.5);
-    plotFaces(G,bfaces,'k','linewidth',1)
-    axis square off, 
-    title(['Reference: ', heading],'FontSize',8);
-    view(0,90); caxis([0 1]);
+
+
     
-    subplot('position',[(plotNo-1)/N+r, 0.02, 1/N-2*r, 0.48]), cla
-    plotCellData(hfmG,state_hfm.s(:,1),'EdgeColor','none');
-    line(fl(:,1:2:3)',fl(:,2:2:4)','Color','r','LineWidth',0.5);
-    plotFaces(hfmG,hfmbfaces,'k','linewidth',1)
-    axis square off, 
-    title(['HFM: ',  heading],'FontSize',8);
-    view(0,90); caxis([0 1]);
-    plotNo = plotNo+1;
-end
-    
-figure;
+%figure;
 % subplot(1,2,1)
 % plot(pvi,pfs(:,1),'-o', hfm_pvi, phfms, '-x');
 % %plot(linspace(0,T,nt),pfs(:,1),'-o');
@@ -237,12 +207,12 @@ figure;
 % set(gca,'XGrid','on','YGrid','on');
 % axis tight
 % subplot(1,2,2)
-plot(linspace(0,Time,nt)/day,pfs(:,1),'-o', linspace(0,Time,nt)/day, phfms, '-x');
-leg = legend('Fine-scale', 'HFM', 'Location','Best');
-ylabel('Saturation at producer');
-xlabel('Time [d]'); 
-set(gca,'XGrid','on','YGrid','on');
-axis tight
+% plot(linspace(0,Time,nt),pfs(:,1),'-o', linspace(0,Time,nt), phfms, '-x');
+% leg = legend('Fine-scale', 'HFM', 'Location','Best');
+% ylabel('Saturation at producer');
+% xlabel('Time [s]'); 
+% set(gca,'XGrid','on','YGrid','on');
+% axis tight
 %%
 
 % <html>
