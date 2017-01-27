@@ -12,11 +12,14 @@ checkLineSegmentIntersect;      % ensure lineSegmentIntersect.m is on path
 % Compute one-sided (half) transmissibilities from input grid and rock properties.
 celldim = [225 225];
 physdim = [9 9];
-celldim_hfm = [27 27];
+celldim_hfm = [225 225];
+%celldim = [300 300];
+%physdim = [9 9];
+%celldim_hfm = [54 54];
 G = cartGrid(celldim, physdim);
 G = computeGeometry(G);
 % define fracture lines 
-fl = [4.5, 2 , 4.5, 7;
+fl = [4.5 , 2 , 4.5, 7;
           2, 4.5, 7, 4.5];
 hfmG = cartGrid(celldim_hfm, physdim);
 hfmG = computeGeometry(hfmG);
@@ -28,13 +31,13 @@ fracture.aperture = physdim(1)/celldim(1); % Fracture aperture
 %% Compute CI and construct fracture grid
 dispif(mrstVerbose, 'Computing CI and constructing fracture grid...\n\n');
 hfmG = CIcalculator2D(hfmG,fracture);
-min_size = 0.3; cell_size = 0.32; % minimum and average cell size.
+min_size = 0.04; cell_size = 0.04; % minimum and average cell size.
 [hfmG,F,fracture] = gridFracture2D(hfmG,fracture,'min_size',min_size,'cell_size',cell_size);
 figure; 
 plotFractureNodes2D(hfmG,F,fracture);
 
 %% Set rock properties
-K_frac = 10000; K_matrix = 1; % * Darcy
+K_frac = 1e-4; K_matrix = 1; % * Darcy
 p_frac = 0.2; p_matrix = 0.5;
 % hfm
 hfmG.rock.poro = p_matrix*ones(hfmG.cells.num, 1);
@@ -43,9 +46,9 @@ hfmG = makeRockFrac(hfmG, K_frac, 'permtype','homogeneous','porosity',p_frac);
 % fine-scale
 rock.perm  = ones(G.cells.num,1)*K_matrix *darcy;
 rock.poro  = ones(G.cells.num, 1)*p_matrix;
-eps = 1e-3;
-fraccells = (G.cells.centroids(:,2)>(4.5-eps) & G.cells.centroids(:,2)<(4.5+eps) & G.cells.centroids(:,1)>2 & G.cells.centroids(:,1)<7 | ...
-            G.cells.centroids(:,1)>(4.5-eps) & G.cells.centroids(:,1)<(4.5+eps) & G.cells.centroids(:,2)>2 & G.cells.centroids(:,2)<7);
+eps = 1e-4; %physdim(1)/celldim(1);
+fraccells = G.cells.centroids(:,1)>(4.5-eps) & G.cells.centroids(:,1)<(4.5+eps) & G.cells.centroids(:,2)>2 & G.cells.centroids(:,2)<7 | ...
+            G.cells.centroids(:,2)>(4.5-eps) & G.cells.centroids(:,2)<(4.5+eps) & G.cells.centroids(:,1)>2 & G.cells.centroids(:,1)<7;
 rock.perm(fraccells) = K_frac * darcy;
 rock.poro(fraccells) = p_frac;
 rock.ntg   = ones(G.cells.num, 1);
@@ -78,12 +81,15 @@ bc = addBC(bc, left, 'pressure', 1*barsa, 'sat', [1 0]);
 bc = addBC(bc, right, 'pressure', 0*barsa, 'sat', [0 1]);
 
 bc_hfm = [];
-xf = hfmG.faces.centroids(:, 1);
+xf = hfmG.faces.centroids(1:hfmG.Matrix.faces.num, 1);
 left = find(abs(xf - min(xf)) < 1e-4);
 right = find(abs(xf - max(xf)) < 1e-4);
 
 bc_hfm = addBC(bc_hfm, left, 'pressure', 1*barsa, 'sat', [1 0]);
 bc_hfm = addBC(bc_hfm, right, 'pressure', 0*barsa, 'sat', [0 1]);
+boundfaces=findfracboundaryfaces2d(hfmG,1e-5);
+bc_hfm = addBC(bc_hfm,boundfaces.West,'pressure',1*barsa, 'sat', [1 0]);
+bc_hfm = addBC(bc_hfm,boundfaces.East,'pressure',0*barsa, 'sat', [0 1]);
 
 %% Initialize state variables
 % Once the wells are added, we can generate the components of the linear
@@ -104,20 +110,21 @@ hfm_state = incompTPFA(hfm_state, hfmG, T, fluid,  'bc', bc_hfm, 'use_trans',tru
 %% Plot initial pressure
 
 figure;
+subplot(1,2,1)
 plotToolbar(G, state.pressure)
 line(fl(:,1:2:3)',fl(:,2:2:4)',1e-3*ones(2,size(fl,1)),'Color','r','LineWidth',0.5);
 cx=caxis();
 colormap jet(25)
 axis tight off
 title('Initial Pressure: Fine scale')
-
-figure;
+subplot(1,2,2)
 plotToolbar(hfmG, hfm_state.pressure)
 line(fl(:,1:2:3)',fl(:,2:2:4)',1e-3*ones(2,size(fl,1)),'Color','r','LineWidth',0.5);
 caxis(cx);
-view(90, 90)
+colormap jet(25)
 axis tight off
 title('Initial Pressure: HFM')
+
 %% Transport loop
 % We solve the two-phase system using a sequential splitting in which the
 % pressure and fluxes are computed by solving the flow equation and then
@@ -130,7 +137,7 @@ title('Initial Pressure: HFM')
 pv     = poreVolume(G,rock);
 hfm_pv = poreVolume(hfmG,hfmG.rock);
 nt     = 30;
-t200   = 0.1*(sum(pv)/sum(state.flux(left)));
+t200   = 0.4*(sum(pv)/sum(state.flux(left)));
 Time   = t200;
 dT     = Time/nt;
 dTplot = Time/3;
@@ -163,8 +170,8 @@ while count <= nt,
    assert(max(s) < 1+eps && min(s) > -eps);
 
    % Update solution of pressure equation.
-   state  = incompTPFA(state , G, hT, fluid,  'bc',bc);
-   hfm_state  = incompTPFA(hfm_state, hfmG, T, fluid, 'bc', bc_hfm, 'use_trans',true);
+   state  = incompTPFA(state , G, hT, fluid,  'bc', bc, 'MatrixOutput', true);
+   hfm_state  = incompTPFA(hfm_state, hfmG, T, fluid, 'bc', bc_hfm, 'use_trans',true, 'MatrixOutput', true);
    
    sol_fs{count,1} = state;
    sol_hfm{count,1} = hfm_state;
@@ -195,8 +202,56 @@ while count <= nt,
 end
 close(hwb);
 
+%% Plot pressure solution
 
+figure;
+subplot(1,2,1)
+plotToolbar(G, state.pressure)
+line(fl(:,1:2:3)',fl(:,2:2:4)',1e-3*ones(2,size(fl,1)),'Color','r','LineWidth',0.5);
+cx=caxis();
+colormap jet(25)
+axis tight off
+title('Pressure: Fine scale')
+subplot(1,2,2)
+plotToolbar(hfmG, hfm_state.pressure)
+line(fl(:,1:2:3)',fl(:,2:2:4)',1e-3*ones(2,size(fl,1)),'Color','r','LineWidth',0.5);
+caxis(cx);
+colormap jet(25)
+axis tight off
+title('Pressure: HFM')
     
+%% Trace streamlines
+% Pick start points along the fracture line and follow streamlines forward and backward from these points. This will
+% ensure maximal accuracy in the near-well regions where the streamlines
+% are converging.
+figure;
+subplot(1,2,1)
+h = plotGrid(G, 'facea', 0.3, 'edgea',0.1);
+hold on;
+lcells = (1:G.cartDims(1)*5:prod(G.cartDims))';
+rcells = (G.cartDims(1):G.cartDims(1)*5:prod(G.cartDims))';
+streamline(pollock(G, state, lcells, 'maxsteps', 1500));
+state.flux = -state.flux;
+%streamline(pollock(G, state, rcells, 'substeps', 1));
+plot(G.cells.centroids([rcells;lcells],1), G.cells.centroids([rcells;lcells],2), ...
+    'or','MarkerSize',4,'MarkerFaceColor',[.6 .6 .6]);
+axis equal tight
+hold off
+title('Streamlines: Fine scale')
+subplot(1,2,2)
+h = plotGrid(hfmG, 'facea', 0.3, 'edgea',0.1);
+hold on;
+lhfmcells = (1:hfmG.cartDims(1):prod(hfmG.cartDims))';
+rhfmcells = (hfmG.cartDims(1):hfmG.cartDims(1):prod(hfmG.cartDims))';
+streamline(pollock(hfmG, hfm_state, lhfmcells));
+hfm_state.flux = -hfm_state.flux;
+%streamline(pollock(hfmG, hfm_state, rhfmcells, 'substeps', 1));
+plot(hfmG.cells.centroids([rhfmcells;lhfmcells],1), hfmG.cells.centroids([rhfmcells;lhfmcells],2), ...
+    'or','MarkerSize',4,'MarkerFaceColor',[.6 .6 .6]);
+axis equal tight
+hold off
+title('Streamlines: HFM')
+
 %figure;
 % subplot(1,2,1)
 % plot(pvi,pfs(:,1),'-o', hfm_pvi, phfms, '-x');
