@@ -22,15 +22,18 @@ checkLineSegmentIntersect;      % ensure lineSegmentIntersect.m is on path
 % dimension 1-by-1 m^2. Define 2 fracture lines in the form of a 'x'
 % through the centre of the domain.
 
-celldim = [81 27];
+celldim = [108 36];
 physdim = [27 9];
 G = cartGrid(celldim, physdim);
 G = computeGeometry(G);
 
-fl = [4.5 , 0 , 4.5, 9;
-          0, 4.5, 27, 4.5;
-          0, 13.5, 27, 13.5;
-          0, 22.5, 27, 22.5];
+fl = [  % // to x-axis
+        0, 3, 27, 3;
+        0, 6, 27, 6;
+        % // to y-axis
+        4.5 , 0 , 4.5, 9;
+        13.5 , 0 , 13.5, 9;
+        22.5 , 0 , 22.5, 9];
 
 %% Process fracture lines
 % Using the input fracture lines, we identify independent fracture networks
@@ -66,9 +69,9 @@ clf; plotFractureNodes2D(G,F,fracture); box on
 
 dispif(mrstVerbose, 'Initializing rock and fluid properties...\n\n');
 G.rock.perm = ones(G.cells.num,1)*darcy;
-G.rock.poro = 0.2*ones(G.cells.num, 1);
+G.rock.poro = 0.5*ones(G.cells.num, 1);
 K_frac = 10000; % Darcy
-poro_frac = 0.5;
+poro_frac = 0.2;
 G = makeRockFrac(G, K_frac, 'permtype','homogeneous','porosity',poro_frac);
 
 %% Define fluid properties
@@ -116,9 +119,9 @@ state  = initResSol (G, 1*barsa, [0 1]);
 dispif(mrstVerbose, 'Defining coarse grids and interaction regions...\n\n');
 
 coarseDims = [27 9];
-dof_frac = 16; % Number of coarse blocks in the fracture grid
+dof_frac = 34; % Number of coarse blocks in the fracture grid
 [CG, CGf] = getRsbGridsHFM(G, fracture.network, 'coarseDims', coarseDims,...
-    'dof_frac',dof_frac);
+    'dof_frac',dof_frac, 'fracSupportRadius', 8);
 
 clf; plotFractureCoarseGrid2D(G,CG.partition,F)
 
@@ -127,23 +130,16 @@ clf; plotFractureCoarseGrid2D(G,CG.partition,F)
 % right face of the domain.
 
 bc = [];
-xf = G.faces.centroids(:, 1);
+xf = G.Matrix.faces.centroids(:, 1);
 left = find(abs(xf - min(xf)) < 1e-4);
 right = find(abs(xf - max(xf)) < 1e-4);
 
 bc = addBC(bc, left, 'pressure', 10*barsa, 'sat', [1 0]);
 bc = addBC(bc, right, 'pressure', 1*barsa, 'sat', [0 1]);
 
-bc_hfm = [];
-xf = hfmG.faces.centroids(1:hfmG.Matrix.faces.num, 1);
-left = find(abs(xf - min(xf)) < 1e-4);
-right = find(abs(xf - max(xf)) < 1e-4);
-
-bc_hfm = addBC(bc_hfm, left, 'pressure', 10*barsa, 'sat', [1 0]);
-bc_hfm = addBC(bc_hfm, right, 'pressure', 1*barsa, 'sat', [0 1]);
-boundfaces=findfracboundaryfaces2d(hfmG,1e-5);
-bc_hfm = addBC(bc_hfm,boundfaces.West,'pressure',10*barsa, 'sat', [1 0]);
-bc_hfm = addBC(bc_hfm,boundfaces.East,'pressure',1*barsa, 'sat', [0 1]);
+boundfaces=findfracboundaryfaces2d(G,1e-5);
+bc = addBC(bc,boundfaces.West,'pressure',10*barsa, 'sat', [1 0]);
+bc = addBC(bc,boundfaces.East,'pressure',1*barsa, 'sat', [0 1]);
 
 %% Compute initial pressure
 
@@ -157,6 +153,7 @@ state_fs = incompTPFA(state, G, T, fluid,  ...
 % basis method. Note that the matrix 'A' does not contain any source terms
 % or boundary conditions. They are added to the coarse linear system when
 % computing the multiscale pressure in the next section.
+figure;
 dispif(mrstVerbose, 'Computing basis functions...\n\n');
 basis_sb = getMultiscaleBasis(CG, A, 'type', 'rsb');
 clf; plotToolbar(G,basis_sb.B,'filterzero',true);
@@ -177,7 +174,6 @@ plotToolbar(G, state_fs.pressure)
 line(fl(:,1:2:3)',fl(:,2:2:4)',1e-3*ones(2,size(fl,1)),'Color','r','LineWidth',0.5);
 cx=caxis();
 colormap jet(25)
-view(90, 90)
 axis tight off
 title('Initial Pressure: Fine scale')
 
@@ -186,7 +182,6 @@ plotToolbar(G, state_ms.pressure)
 line(fl(:,1:2:3)',fl(:,2:2:4)',1e-3*ones(2,size(fl,1)),'Color','r','LineWidth',0.5);
 caxis(cx);
 colormap jet(25)
-view(90, 90)
 axis tight off
 title('Initial Pressure: F-MsRSB')
 
@@ -205,8 +200,8 @@ title('Initial Pressure: F-MsRSB')
 % herein).
 
 pv     = poreVolume(G,G.rock);
-nt     = 30;
-t200    = 2*(sum(pv)/sum(state_fs.flux(left)));
+nt     = 60;
+t200    = 0.8*(sum(pv)/sum(state_fs.flux(left)));
 Time   = t200;
 dT     = Time/nt;
 dTplot = Time/3;
@@ -220,7 +215,7 @@ B = basis_sb.B;
 R = controlVolumeRestriction(CG.partition);
 hwb = waitbar(0,'Time loop');
 while t < Time,
-    state_fs = implicitTransport(state_fs, G, dT, G.rock, fluid, 'bc', bc, 'Trans', T, 'verbose', true);
+    state_fs = implicitTransport(state_fs, G, dT, G.rock, fluid, 'bc', bc, 'Trans', T);
     state_ms = implicitTransport(state_ms, G, dT, G.rock, fluid, 'bc', bc, 'Trans', T);
     % Check for inconsistent saturations
     s = [state_fs.s(:,1); state_ms.s(:,1)];
@@ -263,6 +258,44 @@ while t < Time,
 end
 close(hwb);
 
+%% compare flux at outflow boundary
+OutflowfacesMat = right;
+OutflowfacesFrac = boundfaces.East';
+Outflowfaces = [OutflowfacesMat;OutflowfacesFrac];
+
+figure;
+set(gcf,'Position',[200 200 1000 450]);
+subplot(1,2,1)
+plot(G.faces.centroids(OutflowfacesMat,2), state_fs.flux(OutflowfacesMat),'-o', ...
+    G.faces.centroids(OutflowfacesMat,2), state_ms.flux(OutflowfacesMat),'-*');
+leg = legend('Fine-scale','Multiscale','Location','Best');
+ylabel('Flux at Outflow boundary [m^3/s]');
+xlabel('y [m]'); 
+title(['Matrix cells'])
+set(gca,'XGrid','on','YGrid','on');
+axis([0 physdim(2) 0 1.1*max([state_fs.flux(OutflowfacesMat); state_ms.flux(OutflowfacesMat)])])
+subplot(1,2,2)
+plot(G.faces.centroids(OutflowfacesFrac,2), state_fs.flux(OutflowfacesFrac),'o',G.faces.centroids(OutflowfacesFrac,2), state_ms.flux(OutflowfacesFrac),'*');
+leg = legend('Fine-scale','Multiscale','Location','Best');
+ylabel('Flux at Outflow boundary [m^3/s]');
+xlabel('y [m]'); 
+title(['Fracture Cells'])
+set(gca,'XGrid','on','YGrid','on');
+axis([0 physdim(2) 0 1.1*max([state_fs.flux(OutflowfacesFrac); state_ms.flux(OutflowfacesFrac)])])
+
+%% Plot error in flux at outflow boundary
+
+figure;
+ef = sqrt(sum(abs((state_fs.flux(Outflowfaces)-state_ms.flux(Outflowfaces)).*(state_fs.flux(Outflowfaces)-state_ms.flux(Outflowfaces))).*G.faces.areas(Outflowfaces),1)/(sum(G.faces.areas(Outflowfaces).*state_fs.flux(Outflowfaces))));
+set(gcf,'Position',[200 200 600 400]);
+plot(G.faces.centroids(OutflowfacesMat,2),abs(state_fs.flux(OutflowfacesMat)-state_ms.flux(OutflowfacesMat))./state_fs.flux(OutflowfacesMat), '--+b');
+ylabel('e')
+xlabel('y [m]'); 
+set(gca,'XGrid','on','YGrid','on');
+axis ([0 physdim(2) 0 1])
+
+e_eq = ['$$ e = \frac{ \sum ( |f^{fs}-f^{f-msrsb}|) }{ \sum (f^{fs}) } \qquad e_f^{L^2} =$$ ' num2str(ef)];
+title(e_eq,'interpreter','latex');
 % <html>
 % <p><font size="-1">
 % Copyright 2009-2016 TU Delft and SINTEF ICT, Applied Mathematics.
