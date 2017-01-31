@@ -16,7 +16,7 @@ mrstModule add mrst-gui;        % plotting routines
 checkLineSegmentIntersect;      % ensure lineSegmentIntersect.m is on path
 
 %% Call run2phFiveSpot
-K_frac = 1000; %[1000, 5000, 10000, 50000]';
+K_frac = [100]; %[1000, 5000, 10000, 50000]';
 basis = cell(size(K_frac, 1), 1);
 pv_out = cell(size(K_frac, 1), 1); % pvi, pfs, pms
 for i = 1:size(K_frac, 1)

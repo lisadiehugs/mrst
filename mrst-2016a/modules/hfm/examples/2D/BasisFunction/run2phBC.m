@@ -8,16 +8,23 @@ function [G, CG, basis, pv_out] = run2phBC(K_frac, curK)
     % has dimension 1-by-1 m^2. Define 1 fracture line, roughly 85 m in length,
     % extending diagonally through the centre of the domain.
 
-    celldim = [90 90];
-    physdim = [9 9];
+    celldim = [100 50];
+    physdim = [100 50];
     G = cartGrid(celldim, physdim);
     G = computeGeometry(G);
 
-    fl = [  % // to x-axis
-         0, 3, 9, 3;
-         0, 6, 9, 6;
-         % // to y-axis
-         4.5 , 0 , 4.5, 9];
+    fl = [1, 25, 25, 0;
+          1, 25, 25, 50;
+          75, 0, 99, 25;
+          75, 50, 99, 25;
+        
+          % "inner" fractures 
+          1,0,50,50;
+          25, 0, 75, 50;
+          50, 0, 99, 50;
+          1, 50, 50, 0;
+          25, 50, 75, 0;
+          50, 50, 99, 0];
 
     %% Process fracture line(s)
     % Using the input fracture lines, we identify independent fracture networks
@@ -29,6 +36,7 @@ function [G, CG, basis, pv_out] = run2phBC(K_frac, curK)
     dispif(mrstVerbose, 'Processing user input...\n\n');
     [G,fracture] = processFracture2D(G,fl);
     fracture.aperture = 1/25; % Fracture aperture
+    gravity off
 
     %% Compute CI and construct fracture grid
     % For each matrix block containing a fracture, we compute a fracture-matrix
@@ -39,7 +47,7 @@ function [G, CG, basis, pv_out] = run2phBC(K_frac, curK)
 
     dispif(mrstVerbose, 'Computing CI and constructing fracture grid...\n\n');
     G = CIcalculator2D(G,fracture);
-    min_size = 0.4; cell_size = 0.5; % minimum and average cell size.
+    min_size = 0.8; cell_size = 1; % minimum and average cell size.
     [G,F,fracture] = gridFracture2D(G,fracture,'min_size',min_size,'cell_size',cell_size);
 
     %% Set rock properties in fracture and matrix
@@ -49,8 +57,8 @@ function [G, CG, basis, pv_out] = run2phBC(K_frac, curK)
 
     dispif(mrstVerbose, 'Initializing rock and fluid properties...\n\n');
     G.rock.perm = ones(G.cells.num,1)*darcy;
-    G.rock.poro = 0.5*ones(G.cells.num, 1);
-    poro_frac = 0.2;
+    G.rock.poro = 0.4*ones(G.cells.num, 1); %0.2 works also fine
+    poro_frac = 0.5;
     G = makeRockFrac(G, K_frac(curK), 'permtype','homogeneous','porosity',poro_frac);
 
     %% Define fluid properties
@@ -84,6 +92,7 @@ function [G, CG, basis, pv_out] = run2phBC(K_frac, curK)
 
     bc = [];
     xf = G.Matrix.faces.centroids(:, 1);
+    yf = G.Matrix.faces.centroids(:, 1);
     left = find(abs(xf - min(xf)) < 1e-4);
     right = find(abs(xf - max(xf)) < 1e-4);
 
@@ -110,11 +119,10 @@ function [G, CG, basis, pv_out] = run2phBC(K_frac, curK)
     % matrix and fracture coarse grids are plotted.
 
     dispif(mrstVerbose, 'Defining coarse grids and interaction regions...\n\n');
-    coarseDims = [9 9]; % coarsening factor in each direction
-    dof_frac = 18; % Fracture dof per fracture network
+    coarseDims = [10 5]; % coarsening factor in each direction
+    dof_frac = 34; % Fracture dof per fracture network
     [CG, CGf] = getRsbGridsHFM(G, fracture.network, 'coarseDims', coarseDims,...
         'dof_frac',dof_frac, ...
-        'coarseNodeOption', 'useCoarseCellEndPoints',...
         'fracSupportRadius', 6); % 'paddedPartition', true, 
     figure(1); plotFractureCoarseGrid2D(G,CG.partition,F)
 
@@ -133,7 +141,6 @@ function [G, CG, basis, pv_out] = run2phBC(K_frac, curK)
 
     dispif(mrstVerbose, 'Computing basis functions...\n\n');
     basis_sb = getMultiscaleBasis(CG, A, 'type', 'rsb');
-    if (output)
         figure; plotToolbar(G,basis_sb.B,'filterzero',true);
         prm = log10(G.rock.perm); mx = max(prm); mn = min(prm);
         G.nodes.z = 1e-3*ones(G.nodes.num,1);
@@ -142,7 +149,6 @@ function [G, CG, basis, pv_out] = run2phBC(K_frac, curK)
         plotGrid(CG,'FaceColor','none');
         axis tight; colorbar;
         title('Basis functions plotted in the matrix');
-    end
 
     %% Compute multiscale solution
 
@@ -166,7 +172,7 @@ function [G, CG, basis, pv_out] = run2phBC(K_frac, curK)
 
     pv     = poreVolume(G,G.rock);
     nt     = 50;
-    t200    = 0.7*(sum(pv)/sum(state_fs.flux(left)));
+    t200    = 20*day; %0.2*(sum(pv)/sum(state_fs.flux(left)));
     Time   = t200;
     dT     = Time/nt;
     dTplot = Time/3;
@@ -174,11 +180,13 @@ function [G, CG, basis, pv_out] = run2phBC(K_frac, curK)
 
     pvi = zeros(nt,1);
     sol_fs = cell(nt,1); sol_ms = cell(nt,1);
+    basis = cell(nt,1);
+    basis{1,1} = basis_sb;
     e = zeros(nt,1); pms = zeros(nt,1); pfs = zeros(nt,1);
-    
+    figure;
     plotNo = 1; hfs = 'Reference: '; hms = 'F-MsRSB: ';
     t  = 0; 
-    B = basis_sb.B;
+    B = basis{1,1}.B;
     R = controlVolumeRestriction(CG.partition);
     count = 1;
     hwb = waitbar(0,'Time loop');
@@ -196,8 +204,8 @@ function [G, CG, basis, pv_out] = run2phBC(K_frac, curK)
 
         A = getSystemIncompTPFA(state_ms, G, T, fluid, 'use_trans', true);
         B = iteratedJacobiBasis(A, CG, 'interpolator', B); 
-        basis_sb = struct('B', B, 'R', R);
-        state_ms = incompMultiscale(state_ms, CG, T, fluid, basis_sb, 'bc', bc,'use_trans',true);
+        basis{count,1} = struct('B', B, 'R', R);
+        state_ms = incompMultiscale(state_ms, CG, T, fluid, basis{count,1}, 'bc', bc,'use_trans',true);
 
         %---------------------------------------------------------------------%
 
@@ -228,8 +236,9 @@ function [G, CG, basis, pv_out] = run2phBC(K_frac, curK)
     end
     close(hwb);
 
-    %% Plot saturations
+
     if (output)
+        %% Plot saturations
         OutflowfacesMat = right;
         OutflowfacesFrac = boundfaces.East';
         Outflowfaces = [OutflowfacesMat;OutflowfacesFrac];
@@ -246,38 +255,31 @@ function [G, CG, basis, pv_out] = run2phBC(K_frac, curK)
         set(gca,'XGrid','on','YGrid','on');
         axis([0 physdim(2) 0 1.1*max([state_fs.flux(OutflowfacesMat); state_ms.flux(OutflowfacesMat)])])
         subplot(1,2,2)
-        plot(G.faces.centroids(OutflowfacesFrac,2), state_fs.flux(OutflowfacesFrac),'o',G.faces.centroids(OutflowfacesFrac,2), state_ms.flux(OutflowfacesFrac),'*');
-        leg = legend('Fine-scale','Multiscale','Location','Best');
-        ylabel('Flux at Outflow boundary [m^3/s]');
+        if (size(OutflowfacesFrac) ~= 0)
+            subplot(1,2,2)
+            plot(G.faces.centroids(OutflowfacesFrac,2), state_fs.flux(OutflowfacesFrac),'o',G.faces.centroids(OutflowfacesFrac,2), state_ms.flux(OutflowfacesFrac),'*');
+            leg = legend('Fine-scale','Multiscale','Location','Best');
+            ylabel('Flux at Outflow boundary [m^3/s]');
+            xlabel('y [m]'); 
+            title(['Fracture Cells'])
+            set(gca,'XGrid','on','YGrid','on');
+            axis([0 physdim(2) 0 1.1*max([state_fs.flux(OutflowfacesFrac); state_ms.flux(OutflowfacesFrac)])])
+        end
+        %% Plot error in flux at outflow boundary
+
+        figure;
+        ef = sqrt(sum(abs((state_fs.flux(Outflowfaces)-state_ms.flux(Outflowfaces)).*(state_fs.flux(Outflowfaces)-state_ms.flux(Outflowfaces))).*G.faces.areas(Outflowfaces),1)/(sum(G.faces.areas(Outflowfaces).*state_fs.flux(Outflowfaces).*state_fs.flux(Outflowfaces),1)));
+        set(gcf,'Position',[200 200 600 400]);
+        plot(G.faces.centroids(OutflowfacesMat,2),abs(state_fs.flux(OutflowfacesMat)-state_ms.flux(OutflowfacesMat))./state_fs.flux(OutflowfacesMat), '--+b');
+        ylabel('e')
         xlabel('y [m]'); 
-        title(['Fracture Cells'])
         set(gca,'XGrid','on','YGrid','on');
-        axis([0 physdim(2) 0 1.1*max([state_fs.flux(OutflowfacesFrac); state_ms.flux(OutflowfacesFrac)])])
+        axis ([0 physdim(2) 0 1])
+
+        e_eq = ['$$ e = \frac{ \sum ( |f^{fs}-f^{f-msrsb}|) }{ \sum (f^{fs}) } \qquad e_f^{L^2} =$$ ' num2str(ef)];
+        title(e_eq,'interpreter','latex');    
     end
 
-%     %% Plot water saturation at producer 
-% 
-%     figure;
-%     plot(pvi,pfs(:,1),'-o',pvi,pms(:,1),'--*');
-%     leg = legend('Fine-scale','Multiscale','Location','Best');
-%     ylabel('Saturation at producer');
-%     xlabel('PVI [%]'); 
-%     set(gca,'XGrid','on','YGrid','on');
-%     axis tight
-
-%     %% Plot error in saturation 
-%     if (output)
-%         figure;
-%         plot(pvi,e*100, '--+b');
-%         ylabel('e [%]')
-%         xlabel('PVI [%]'); 
-%         set(gca,'XGrid','on','YGrid','on');
-%         axis tight
-% 
-%         e_eq = '$$ e = \frac{ \sum ( |S_w^{fs}-S_w^{f-msrsb}| \times pv) }{ \sum (S_w^{fs} \times pv) } $$';
-%         title(e_eq,'interpreter','latex');
-%     end
-        basis = basis_sb;
         pv_out = [pvi,pfs,pms];
 end
 % <html>
