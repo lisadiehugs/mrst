@@ -35,8 +35,9 @@ for i=1:no_b
 end
 axis([min(G.cells.centroids(ifcells,1)) max(G.cells.centroids(ifcells,1)) min(G.cells.centroids(ifcells,2)) max(G.cells.centroids(ifcells,2)) 0 1])
 view(-20, 20);
-set(gcf,'Position',[200 200 660 450]);
-set(gca,'OuterPosition',[0.1 0 0.9 1]);
+set(gcf,'Position',[200 200 1100 450]);
+set(gca,'OuterPosition',[0.1 0 0.45 1]);
+ax1 =  gca;
 colors =          [0,        0.4470,  0.7410;
                   0.8500,    0.3250,   0.0980;
                   0.9290,    0.6940,   0.1250;
@@ -47,7 +48,7 @@ colors =          [0,        0.4470,  0.7410;
 % set checkboxes to enable viewing of single basis functions
 for i = 1:no_b
    hcb(i) = uicontrol('Style','checkbox','Value',1,...
-                       'Position',[10 8+i*30 100 30],'String', [paramstr '=' num2str(paramval(i))]);
+                       'Position',[30 8+i*30 100 30],'String', [paramstr ' = ' num2str(paramval(i))]);
    set(h(i), 'EdgeColor', 'k');
    set(h(i), 'FaceAlpha', 0.5); 
    set(h(i), 'FaceColor', colors(i,:))
@@ -60,23 +61,47 @@ for i = 1:CG.cells.num
 end
 hpop = uicontrol('Style', 'popup',...
            'String', strings,...
-           'Position', [30 340 70 50]); 
+           'Position', [30 360 70 50]);
+% Add a text uicontrol to label the slider.
+txthpop = uicontrol('Style','text',...
+            'Position',[30 410 70 20],...
+            'String','CC Idx');
 
 %set popupmenu to choose time step
 stringsnt = cell(nt(1), 1);
-for i = 1:CG.cells.num
+for i = 1:nt(1)
     stringsnt{i} = strcat(num2str(i));
 end
 hpopnt = uicontrol('Style', 'popup',...
-           'String', strings,...
-           'Position', [130 340 70 50]); 
+           'String', stringsnt,...
+           'Position', [30 300 70 50]); 
+txthpopnt = uicontrol('Style','text',...
+            'Position',[30 350 70 20],...
+            'String','Timestep');
+
+        % plot grid and mark coarse cell
+yy = subplot('position',[0.6 0.3 0.35 0.45]); hold on;
+plotGrid(G, 'FaceColor', 'none', 'Edgecolor', [0.9,0.9,0.9]);
+plotGrid(CG, 'FaceColor', 'none', 'Edgecolor', [0.4,0.4,0.4]);
+axis tight;
+hCCnode = zeros(CG.cells.num,1); 
+hCCface = zeros(CG.cells.num,1);
+hCCir= zeros(CG.cells.num,1);
+for i = 1:CG.cells.num
+    hCCir(i) = plotCellData(G, ones(size(CG.cells.interaction{i},1),1), CG.cells.interaction{i}, 'Visible', 'off', 'FaceAlpha', 0.5, 'EdgeAlpha', 0.3);
+    hCCface(i) = plotFaces(CG, CG.cells.faces(CG.cells.facePos(i):(CG.cells.facePos(i+1)-1)), 'r', 'Visible', 'off');
+    hCCnode(i) = plot(CG.cells.centroids(i, 1),CG.cells.centroids(i, 2),'.r','markersize',12, 'Visible', 'off');
+end
+set(hCCir(1), 'Visible', 'on'); 
+set(hCCnode(1), 'Visible', 'on');
+set(hCCface(1), 'Visible', 'on');
 % set callbacks
 set(hpopnt,'Callback',{@popupnt,h, hpop, basis, G, CG, tri});
-set(hpop,'Callback',{@popupccb,h, hpopnt, basis, G, CG, tri});
+set(hpop,'Callback',{@popupccb,h, hpopnt, basis, G, CG, tri, ax1, hCCnode, hCCface, hCCir});
 end
 
 % update figure (set new coarse cell)
-function h = updateccb(h, basis, G, CG, tri, ccb, nt) 
+function h = updateccb(h, basis, G, CG, tri, ccb, nt, ax1, hCCnode, hCCface, hCCir) 
 no_m = G.Matrix.cells.num;
 ifcells = CG.cells.interaction{ccb};
 hold on;
@@ -89,7 +114,16 @@ hold on;
         delete(temp);
     end
     refreshdata;
-axis([min(G.cells.centroids(ifcells,1)) max(G.cells.centroids(ifcells,1)) min(G.cells.centroids(ifcells,2)) max(G.cells.centroids(ifcells,2)) 0 1])
+    axis(ax1, [min(G.cells.centroids(ifcells,1)) max(G.cells.centroids(ifcells,1)) min(G.cells.centroids(ifcells,2)) max(G.cells.centroids(ifcells,2)) 0 1])
+    hCCnodeold= findobj(hCCnode, 'Visible', 'on');
+    hCCfaceold= findobj(hCCface, 'Visible', 'on');
+    hCCirold= findobj(hCCir, 'Visible', 'on');
+    set(hCCnodeold, 'Visible', 'off');
+    set(hCCfaceold, 'Visible', 'off');
+    set(hCCirold, 'Visible', 'off');
+    set(hCCnode(ccb), 'Visible', 'on');
+    set(hCCface(ccb), 'Visible', 'on');
+    set(hCCir(ccb), 'Visible', 'on');
 end
 
 % update figure (set new time step)
@@ -106,14 +140,14 @@ hold on;
         delete(temp);
     end
     refreshdata;
-axis([min(G.cells.centroids(ifcells,1)) max(G.cells.centroids(ifcells,1)) min(G.cells.centroids(ifcells,2)) max(G.cells.centroids(ifcells,2)) 0 1])
+%axis([min(G.cells.centroids(ifcells,1)) max(G.cells.centroids(ifcells,1)) min(G.cells.centroids(ifcells,2)) max(G.cells.centroids(ifcells,2)) 0 1])
 end
 
 %callback for popup menu for coarse cell
-function popupccb(hObject, event, handles, hpopnt, basis, G, CG, tri)
+function popupccb(hObject, event, handles, hpopnt, basis, G, CG, tri, ax1, hCCnode, hCCface, hCCir)
 ccb = get(hObject,'Value');
 nt = get(hpopnt, 'Value');
-updateccb(handles, basis, G, CG, tri, ccb, nt);
+updateccb(handles, basis, G, CG, tri, ccb, nt, ax1, hCCnode, hCCface, hCCir);
 end
 
 %callback for popup menu for time step
