@@ -1,6 +1,6 @@
-%% quarterSpotDP - This example outlines the basic usage of the 
-% two-phase dual-porosity model. We inject the first phase on 
-% one corner and produce at the opposite one.
+%% Hadi with boundary conditions
+% we apply pressure drop boundary conditions to a quasi 1D domain. This 
+% test is for comparison with the hfm/ F-MsRSB approach
 clc;
 close all; clear all;
 
@@ -12,11 +12,11 @@ mrstModule add ad-props ad-core ad-blackoil ad-fi blackoil-sequential dual-poros
 % and y directions.
 
 % Two layer grid
-y_size = 9;
-x_size = 27;
+y_size = 50;
+x_size = 200;
 
-Ny = 18;
-Nx = 54;
+Ny = 1; % 1D problem for dual-porosity
+Nx = 40;
 
 
 G = cartGrid([Nx Ny],[x_size y_size]);
@@ -30,7 +30,7 @@ G = computeGeometry(G);
 % while the fluid transfer with the matrix will happen at a larger
 % timescale
 kf = 10000*darcy;
-phif = 0.2;
+phif = 0.5;
 
 km = 1*darcy;
 phim = 0.5;
@@ -40,8 +40,8 @@ rock_fracture = makeRock(G, kf, phif);
 rock_matrix = makeRock(G, km, phim);
 
 %% Pressures of injector and producer wells
-pprod = 0;
-pinj = 1*barsa;
+pprod = 1*barsa;
+pinj = 10*barsa;
 
 %% We also need two fluid structures for the dual-porosity model. Fractures are
 % usually set as having zero capillary pressure, but we don't define any 
@@ -71,7 +71,7 @@ fluid_fracture.bO = @(p)(b+m*p);
 % the transfer of oil phase as the opposite of the transfer of water phase,
 % meaning that any amount of water that we transfer from fracture to the
 % matrix will displace a mass of oil that will be transferred to the fractures 
-beta = 5e-05;
+beta = 5e-07;
 dp_info.transfer_water = @(pwf,pwm,swf,swm,...
                        pof,pom,sof,som) ( beta * (swf-swm));
 
@@ -86,8 +86,8 @@ xf = G.faces.centroids(:, 1);
 left = find(abs(xf - min(xf)) < 1e-4);
 right = find(abs(xf - max(xf)) < 1e-4);
 
-%bc = addBC(bc, left, 'pressure', pinj, 'sat', [1 0]);
-bc = addBC(bc, left, 'flux', sum(pv)/(10*day), 'sat', [1 0])
+bc = addBC(bc, left, 'pressure', pinj, 'sat', [1 0]);
+%bc = addBC(bc, left, 'flux', sum(pv)/(10*day), 'sat', [1 0])
 bc = addBC(bc, right, 'pressure', pprod, 'sat', [0 1]);
 
 
@@ -115,8 +115,8 @@ fig1 = figure('Position',[100,0,600,800]);
 fig2 = figure('Position',[700,0,600,800]);
 
 %% Simulate the models
-Time = 10* day;
-n = 5;
+Time = 2* day;
+n =50;
 dT = Time/n;
 for i = 1:n
     %% Advancing fields
