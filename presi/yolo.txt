@@ -1,1 +1,7 @@
-fdfdfd
+continuum models aim at an averaged description of flow and transport in the fractured medium.
+They are based on an upscaling procedure, which introduces effective coefficients for one or several interacting continua.
+E.g. dual-porosity: matrix and fracture are upscaled into separate continua, which are coupled through a transfer term.
+Complexity of the problem and degrees of freedom are drastically reduced → efficient, suitable for large scale problems
+However, this efficiency comes at the cost of:
+- losing information on the fine-scale
+- additional assumptions → REV on the macro-scale, not only for matrix, but also for fractures, which is not always the case.
